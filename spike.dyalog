@@ -1,12 +1,12 @@
 :Namespace Spike
-	⍝ Converted from the quick2wire-python-api
+	⍝ Converted from the quick2wire-python-api by Liam Flanagan
 	⍝ For more information see https://github.com/quick2wire/quick2wire-python-api
 	
 	⍝ Dependencies
 	⍝∇:require =/../I2C
 	
-	I2C_BUS←1
-	ADDRESS←4
+	I2C_BUS←1 ⍝ The bus that the I2C is on, on the Pi model A this is 0, on the model B this is 1.
+	ADDRESS←4 ⍝ This is the address of the arduino
 	
 	∇ ret←main;⎕IO;ret;funret;funerr
 		ret←0
