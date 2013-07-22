@@ -1,30 +1,36 @@
-﻿:Class DyaBot              
-⍝ Object-oriented wrapper for the Dyalog Robot
-⍝ Public Field "Speed" is a 2-element vector, range [¯1,1] (¯1=Full Astern, 1=Full Ahead)
+﻿:Class DyaBot : ArdCom             
+⍝ Object-oriented wrapper for the Dyalog Robot.
+⍝ Public Field "Speed" is a 2-element vector, range [¯100,100]
+⍝ Public Field "SonarAngle" is the Sonar pointing direction [0,180]
+
 ⍝ First element controls right wheel, 2nd element left wheel
     <⍝ Example:
 ⍝
 ⍝     bot←⎕NEW DyaBot ((100 255) (100 255))  ⍝ Driving range 100-255
 ⍝     bot.Speed←60 100 ⋄ ⎕DL 3 ⋄ bot.Speed←0 ⍝ Curve to right for 3 secs   
 
-    ⍝∇:require =/I2C
+⍝ Dependencies
+⍝∇:require =/ArdCom
 
-    (⎕IO ⎕ML)←1                 ⍝ Index origin
+    ⎕IO←1                       ⍝ Index origin
 
     I2C_ADDRESS←4               ⍝ I2C address of the Arduino
     I2C_BUS←1                   ⍝ Which bus is I2C on          
         
-    IRSensor←0                  ⍝ Analog Input
+    SonarInput←14               ⍝ Sonar ("a0")
+    IRSensor←15                 ⍝ Analog Input ("a1")
+    SonarServo←10               ⍝ Analog ("pwm") output
     SpeedPins←5 9               ⍝ Analog Pins for Right & Left Speed
     DirectionPins←2 2⍴4 3 8 7   ⍝ Digital pins for Right & Left x Fwd,Back
-    (Analog Digital AnalogRead)←⎕UCS 'ADa'  ⍝ A and D command values
 
     Stopping←0                  ⍝ We are not stopping (used to stop monitor threads)
 
     :Field Public Speed←0 0
-    :Field Public IRange←¯1 
+    :Field Public SonarAngle←90
+    :Field Public IRange←¯1       ⍝ Infra Red Range
+    :Field Public SRange←¯1       ⍝ Sonar Range
     :Field Private _range←255 255 ⍝ Right & Left speed range
-    :Field Public Trace←1
+    :Field Public Trace←0
     :Field Public Shared Testing←0            ⍝ Set to 1 to not actually issue I2C commands
 
     getnum←{2⊃⎕VFI ⍵}
@@ -38,12 +44,21 @@
           ⎕SIGNAL 11                          ⍝ Else signal a DOMAIN ERROR
       :Else
           dp←,(s<0)⌽DirectionPins             ⍝ Pin to be turned on in 1st column
-          direction←,Digital,dp,⍪1 0 1 0\s≠0  ⍝ Set all direction pins
-          speeds←,Analog,SpeedPins,⍪|s        ⍝ Set up speeds
-          :If Trace ⋄ ⎕←1↓('  '⎕R' '),',',⍕{z←⍵ ⋄ z[;1]←⎕UCS z[;1] ⋄ z}6 3⍴direction,speeds ⋄ :EndIf
-          ⍝:If ~Testing
-          z←#.I2C.WriteBytes I2C_ADDRESS(direction,speeds)0
+          direction←,dp,⍪1 0 1 0\s≠0          ⍝ Set all direction pins
+          speeds←,SpeedPins,⍪|s               ⍝ Set up speeds
+          Send'W',direction,speeds
           ⍝:EndIf
+      :EndIf
+    ∇
+
+    ∇ SetSonar args;s;z;dp;direction;speeds
+      :Implements Trigger SonarAngle
+      s←args.NewValue
+      :If 1=⍴,s                               ⍝ Must have 1 elements
+      :AndIf 180≥|s                           ⍝ And scaled result must be ≤255
+          z←Send'W'SonarServo s
+      :Else
+          ⎕SIGNAL 11
       :EndIf
     ∇
 
@@ -53,35 +68,36 @@
       :While IRThread∊⎕TNUMS ⋄ ⎕DL 0.1 ⋄ :EndWhile
     ∇
     
-    ∇ (rc err)←UpdateIRange;pin;value;z;r
+    ∇ (rc err)←Update;pin;value;z;r;tries;ok;rcr
       :Access Public
      
-      (rc r err)←#.I2C.ReadChar I2C_ADDRESS 255 255
-      :If rc=0
-      :AndIf 2=⍴z←getnum('a(\d+):(\d+);?'⎕R'\1 \2')r
-          (pin value)←z
-      :AndIf pin=IRSensor
-          IRange←cmFromV z←value×5÷1200
-          err←value
-      :Else
-          IRange←¯1
+      tries←0
+      ok←0
+     
+      :Repeat
+          :Trap 701
+              :If 2=⍴z←ReadData
+                  IRange←cmFromV(2⊃z)×5÷1200
+                  SRange←1.27×1⊃z ⍝ vcc/512 per inch
+                  ok←1
+              :Else
+                  ⎕DL 0.03
+              :EndIf
+          :Else
+              tries+←1
+              ⎕DL 0.1
+              ResetSignals ⍝ // Clear signal handling
+          :EndTrap
+      :Until ok∨tries>10
+     
+      :If ~ok
+          'UNABLE TO READ RANGES'⎕SIGNAL ok↓11
       :EndIf
     ∇
 
-    ∇ MonitorIR dummy;err;rc
-      ⍝ Keep the IRange field up-to-date
-      :Repeat
-          (rc err)←UpdateIRange
-          :If rc=0 ⋄ ⎕DL 0.1
-          :Else ⋄ ⎕DL 0.01
-          :EndIf
-          ⎕DL 1
-      :Until Stopping
-    ∇
-
-    ∇ Make ranges;z;count;err;rc;err1;rc1;txt
+    ∇ Make ranges;z;count;err;rc;err1;rc1;txt;pins;values
       :Access Public
-      :Implements Constructor
+      :Implements Constructor :Base I2C_ADDRESS I2C_BUS
      
       :Select ⊃⍴ranges←,ranges
       :Case 0 ⋄ ranges←100 255
@@ -95,31 +111,24 @@
       :EndIf
       _range←_upper-_lower
      
-      :If ~Testing
-          z←#.I2C.Init ⍬
-          z←#.I2C.Open 1 0 0
-      :EndIf
+      pins←SonarServo'S' 0                  ⍝ 1 pwm Sonar Servo
+      pins⍪←(SonarInput IRSensor),2 2⍴'a' 0 ⍝ 2 analog inputs
+      pins⍪←SpeedPins,2 2⍴'A' 0             ⍝ 2 Analog Outputs
+      pins⍪←(,DirectionPins),4 2⍴'D' 0      ⍝ 4 Digital Outputs
+      Pins←pins ⍝ Set the ArdCom property
      
       count←0
-      :Repeat
-          (rc1 err1)←#.I2C.WriteBytes I2C_ADDRESS(AnalogRead IRSensor 0)0 ⋄ ⎕DL 0.03
-          (rc txt err)←#.I2C.ReadChar I2C_ADDRESS 255 255
-          count←count+1
-          :If count>5
-              ('Unable to initialise IR sensor: ',⍕rc err)⎕SIGNAL 11
-          :EndIf
-      :Until (rc=0)∧rc1=0
-     
-      ⎕←#.I2C.ReadChar I2C_ADDRESS 255 255
-      ⎕←'IR Monitor ',txt,', Thread: ',⍕IRThread←MonitorIR&0
+      :If 2≠⍴values←ReadData
+          ∘ ⍝ Arduino is not returning IR and Sonar values
+      :EndIf
+      (IRange SRange)←values
     ∇
 
     ∇ UnMake;z
-      :Implements Destructor
+      Speed←0
+      SonarAngle←90
      
-      :If (~Testing)∧1=⍴⎕INSTANCES⊃⊃⎕CLASS ⎕THIS
-          z←#.I2C.Close 0
-      :EndIf
+      :Implements Destructor     
     ∇
                                         
     ⍝ Voltage/Distance table from the SHARP GP2Y0A21YK0F data sheet
@@ -134,6 +143,13 @@
           step←-/IRvd[;i+0 1]
           cm←IRvd[1;i]+step[1]×(V-IRvd[2;i])÷step[2]
       :EndSelect
+    ∇
+    
+    ∇ ResetSignals
+    ⍝ Reset signal handling: Workaround for issue with libi2c
+      :Trap 11
+          {⎕SIGNAL ⍵}11
+      :EndTrap
     ∇
 
 :EndClass
