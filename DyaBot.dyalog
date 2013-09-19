@@ -2,13 +2,14 @@
 ⍝ Object-oriented wrapper for the Dyalog Robot
 ⍝ Public Field "Speed" is a 2-element vector, range [¯100,100]
 ⍝ Public Field "SonarAngle" is the Sonar pointing direction [0,180]
-⍝ Public outputs IRange and SRange give infra-red and sonar ranges. Call "Update" method to take readings.
+⍝ Public outputs IRange and SRange give infra-red and sonar ranges. 
 
 ⍝ First element controls right wheel, 2nd element left wheel
-    <⍝ Example:
+    ⍝ Example:
 ⍝
 ⍝     bot←⎕NEW DyaBot ((100 255) (100 255))  ⍝ Driving range 100-255
 ⍝     bot.Speed←60 100 ⋄ ⎕DL 3 ⋄ bot.Speed←0 ⍝ Curve to right for 3 secs   
+⍝     bot.IRange 			     ⍝ Read InfraRed range
 
     ⍝ Dependencies
     ⍝∇:require =/ArdCom
