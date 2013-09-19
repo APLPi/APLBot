@@ -1,7 +1,8 @@
 ﻿:Class DyaBot : ArdCom             
-⍝ Object-oriented wrapper for the Dyalog Robot.
+⍝ Object-oriented wrapper for the Dyalog Robot
 ⍝ Public Field "Speed" is a 2-element vector, range [¯100,100]
 ⍝ Public Field "SonarAngle" is the Sonar pointing direction [0,180]
+⍝ Public outputs IRange and SRange give infra-red and sonar ranges. Call "Update" method to take readings.
 
 ⍝ First element controls right wheel, 2nd element left wheel
     <⍝ Example:
@@ -9,10 +10,10 @@
 ⍝     bot←⎕NEW DyaBot ((100 255) (100 255))  ⍝ Driving range 100-255
 ⍝     bot.Speed←60 100 ⋄ ⎕DL 3 ⋄ bot.Speed←0 ⍝ Curve to right for 3 secs   
 
-⍝ Dependencies
-⍝∇:require =/ArdCom
+    ⍝ Dependencies
+    ⍝∇:require =/ArdCom
 
-    ⎕IO←1                       ⍝ Index origin
+    ⎕IO←⎕ML←1                   ⍝ Environment
 
     I2C_ADDRESS←4               ⍝ I2C address of the Arduino
     I2C_BUS←1                   ⍝ Which bus is I2C on          
@@ -20,18 +21,22 @@
     SonarInput←14               ⍝ Sonar ("a0")
     IRSensor←15                 ⍝ Analog Input ("a1")
     SonarServo←10               ⍝ Analog ("pwm") output
-    SpeedPins←5 9               ⍝ Analog Pins for Right & Left Speed
+    SpeedPins←5 6               ⍝ Analog Pins for Right & Left Speed
     DirectionPins←2 2⍴4 3 8 7   ⍝ Digital pins for Right & Left x Fwd,Back
-
-    Stopping←0                  ⍝ We are not stopping (used to stop monitor threads)
 
     :Field Public Speed←0 0
     :Field Public SonarAngle←90
-    :Field Public IRange←¯1       ⍝ Infra Red Range
-    :Field Public SRange←¯1       ⍝ Sonar Range
     :Field Private _range←255 255 ⍝ Right & Left speed range
     :Field Public Trace←0
     :Field Public Shared Testing←0            ⍝ Set to 1 to not actually issue I2C commands
+
+    :Property Simple IRange,SRange
+    :Access Public
+        ∇ r←Get arg
+          Update
+          r←('SRange' 'IRange'⍳⊂arg.Name)⊃sRange iRange
+        ∇
+    :EndProperty
 
     getnum←{2⊃⎕VFI ⍵}
 
@@ -64,11 +69,10 @@
 
     ∇ Stop
       :Access Public
-      Stopping←1
-      :While IRThread∊⎕TNUMS ⋄ ⎕DL 0.1 ⋄ :EndWhile
+      ⍝Stopping←1 ⍝ No longer used
     ∇
     
-    ∇ (rc err)←Update;pin;value;z;r;tries;ok;rcr
+    ∇ Update;pin;value;z;r;tries;ok;rcr
       :Access Public
      
       tries←0
@@ -77,8 +81,8 @@
       :Repeat
           :Trap 701
               :If 2=⍴z←ReadData
-                  IRange←cmFromV(2⊃z)×5÷1200
-                  SRange←1.27×1⊃z ⍝ vcc/512 per inch
+                  iRange←cmFromV(2⊃z)×5÷1200
+                  sRange←1.27×1⊃z ⍝ vcc/512 per inch
                   ok←1
               :Else
                   ⎕DL 0.03
@@ -121,7 +125,6 @@
       :If 2≠⍴values←ReadData
           ∘ ⍝ Arduino is not returning IR and Sonar values
       :EndIf
-      (IRange SRange)←values
     ∇
 
     ∇ UnMake;z
