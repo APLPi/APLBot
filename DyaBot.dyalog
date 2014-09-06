@@ -5,11 +5,10 @@
 ⍝ Public outputs IRange and SRange give infra-red and sonar ranges. 
 
 ⍝ First element controls right wheel, 2nd element left wheel
-    ⍝ Example:
+⍝ Example:
 ⍝
 ⍝     bot←⎕NEW DyaBot ((100 255) (100 255))  ⍝ Driving range 100-255
 ⍝     bot.Speed←60 100 ⋄ ⎕DL 3 ⋄ bot.Speed←0 ⍝ Curve to right for 3 secs   
-⍝     bot.IRange 			     ⍝ Read InfraRed range
 
     ⍝ Dependencies
     ⍝∇:require =/ArdCom
@@ -53,8 +52,15 @@
           direction←,dp,⍪1 0 1 0\s≠0          ⍝ Set all direction pins
           speeds←,SpeedPins,⍪|s               ⍝ Set up speeds
           Send'W',direction,speeds
-          ⍝:EndIf
       :EndIf
+    ∇
+
+    ∇ Brake;direction;speeds
+      :Access Public
+     
+      direction←,(,DirectionPins),⍪4⍴0        ⍝ Set all direction pins
+      speeds←,SpeedPins,⍪255 255             ⍝ Set up speeds
+      Send'W',direction,speeds
     ∇
 
     ∇ SetSonar args;s;z;dp;direction;speeds
